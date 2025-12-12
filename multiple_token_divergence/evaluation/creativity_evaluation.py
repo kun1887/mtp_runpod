@@ -1,0 +1,102 @@
+import torch
+from evaluation.pfa_evaluation import process_data
+from evaluation.custom_generation import generate_from_recipe, generate_next_token_mtp_with_blending
+
+
+def creativity_evaluation(recipe,
+                          num_datapoints=500,
+                          temperature=1.0,
+                          top_k=50,
+                          alpha=0.,
+                          equal_entropy=True):
+    """
+    Evaluates a model on various natural language "learning levels."
+
+    This function processes a specialized evaluation dataset where samples are
+    categorized by complexity (e.g., "predictable," "code," "literature").
+    It computes per-token losses for each category, generates bar charts
+    comparing these losses, and calculates an "interestingness ratio."
+    This ratio compares the model's primary loss (e.g., PHi loss) on
+    "interesting" tasks versus "uninteresting" tasks.
+
+    The model is returned to training mode upon completion.
+
+    Args:
+        recipe (Any): A recipe object containing the model (`_model`), tokenizer
+            (`_tokenizer`), and training configuration (`cfg`).
+        num_datapoints (int, optional): The number of data points to process for
+            the evaluation. Defaults to 500.
+
+    Returns:
+        Tuple[Dict[str, go.Figure], Dict[str, float]]: A tuple containing:
+        - A dictionary where keys are loss names (str) and values are the
+          corresponding Plotly bar chart figures.
+        - A dictionary containing the calculated "interestingness_ratio" (float).
+    """
+    recipe._model.eval()
+    recipe._loss_fn.eval()
+
+    dataset = recipe._dataloader.dataset
+    if hasattr(dataset, 'ds'):
+        dataset = dataset.ds
+    dataset.split = 'validation'
+
+    datapoints = process_data(
+        recipe,
+        num_datapoints=len(dataset),
+        dataset=dataset,
+        batch_size=recipe.cfg.batch_size,
+    )
+
+    total_tokens = 0
+    total_losses = {}
+    for datapoint in datapoints:
+        for key in datapoint:
+            if 'tokenwise' in key:
+                loss_key = key.replace('tokenwise_', 'eval_')
+                if loss_key not in total_losses:
+                    total_losses[loss_key] = 0.0
+                total_losses[loss_key] += datapoint[key].sum()
+        total_tokens += len(datapoint['tokens'])
+    avg_losses = {k: v / total_tokens for k, v in total_losses.items()}
+
+    # generate data
+    num_seq_to_generate = 1024
+    batch_size = 128
+    tokenizer = recipe._tokenizer
+    logit_mask = torch.zeros(tokenizer.vocab_size, dtype=torch.bool)
+    logit_mask[tokenizer.special_tokens['edge: ']] = True
+    generate_next_token = lambda logits, **kwargs: generate_next_token_mtp_with_blending(logits, **kwargs,
+                                                                                         logit_filter=logit_mask,
+                                                                                         alpha=alpha,
+                                                                                         equal_entropy=equal_entropy)
+
+    prompt_tokens = [[tokenizer.bos_id]] * batch_size
+    token_sequences = []
+    for i in range(num_seq_to_generate // batch_size):
+        with torch.no_grad():
+            generated_tokens = generate_from_recipe(
+                            prompt_tokens=prompt_tokens,
+                            recipe=recipe,
+                            max_new_tokens=dataset.sequence_length - 1,
+                            temperature=temperature,
+                            top_k=top_k,
+                            stop_tokens=[tokenizer.eos_id, tokenizer.pad_id],
+                            custom_generate_next_token=generate_next_token,
+                        )
+        for seq in generated_tokens:
+            token_sequences.append(seq['generated_tokens'].tolist())
+
+    split_data = dataset.split_generated_data(token_sequences)
+    creativity_scores = dataset.creativity_score(split_data, num_items=len(token_sequences))
+
+    for key, value in creativity_scores.items():
+        avg_losses[f'eval_{key}'] = value
+
+    eval_loss = 1 / (creativity_scores['creativity_score'] + 1e-4)
+    avg_losses['eval_loss'] = eval_loss
+
+    recipe._model.train()
+    recipe._loss_fn.train()
+    dataset.split = 'train'
+    return {}, avg_losses

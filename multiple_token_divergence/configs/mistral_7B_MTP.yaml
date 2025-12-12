@@ -1,0 +1,156 @@
+# ----------------------------------------------------------------------------------
+# General Run and Environment Settings
+# ----------------------------------------------------------------------------------
+device: cuda
+dtype: bf16 # Use bfloat16 for training
+seed: 1234 # Set to an integer for reproducible runs
+
+# ----------------------------------------------------------------------------------
+# Model and Tokenizer Configuration
+# ----------------------------------------------------------------------------------
+model:
+  _component_: models.mistral_mtp_7b
+  use_mtp: True
+  detach_inputs: True
+  use_next_embeddings: True
+  tied_embeddings: False
+  mtp_layer_hidden_size_factor: 1.
+  num_mtp_layers: 2
+  #shortcut_PHi_layer_position: 21
+initialize_mtp_with_last_layer_weights: True
+  # _component_: torchtune.models.llama3_2.llama3_2_3b
+train_from_scratch: false # If true, initializes a new model instead of loading a checkpoint
+
+# Tokenizer configuration
+tokenizer:
+  _component_: torchtune.models.mistral.mistral_tokenizer
+  path: checkpoints/mistral_tokenizer.model
+  max_seq_len: 2048
+
+# ----------------------------------------------------------------------------------
+# Dataset and Dataloader
+# ----------------------------------------------------------------------------------
+dataset:
+  _component_: dataset_classes.combined_mistral_math_gsm8k_fineweb_dataset
+  #_component_: dataset_classes.slim_pajama_dataset
+  #_component_: dataset_classes.fineweb_dataset
+  # On-the-fly packing concatenates samples into sequences of a fixed length
+  packed_on_the_fly: True
+  packed_sequence_length: 2048
+  split_across_pack: False
+  num_workers: 8
+shuffle: true # Whether to shuffle the dataset
+batch_size: 4
+
+# ----------------------------------------------------------------------------------
+# Training and Optimization
+# ----------------------------------------------------------------------------------
+# Training loop settings
+epochs: 100
+max_total_steps: 30_000 # Stop training after this many global steps
+max_steps_per_epoch: null # Optional: limit steps per epoch
+
+# Training mode
+train_whole_model: False # If false, freezes the base model and only trains the PHi layer
+ignore_main_training_loss: False # If true, trains only on PHi loss, ignoring next-token loss
+
+# Optimizer (AdamW)
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: true
+  lr: 1.0e-4
+
+# Learning rate scheduler
+lr_scheduler:
+  _component_: modules.get_cosine_schedule_with_warmup
+  num_warmup_steps: 100
+  num_training_steps: 30_000
+
+
+# Main loss function for next-token prediction
+loss:
+  _component_: modules.LinearCEMTPLoss
+  mtp_ce_loss_factor: 0.
+  mtp_kl_loss_factor: 1.
+  #_component_: torchtune.modules.loss.LinearCrossEntropyLoss
+  #_component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+  #num_output_chunks: 8 # Number of chunks for the output layer
+
+# Gradient management
+gradient_accumulation_steps: 1
+
+# ----------------------------------------------------------------------------------
+# Memory Management
+# ----------------------------------------------------------------------------------
+# FSDP settings
+fsdp_cpu_offload: false
+#custom_sharded_layers: ['tok_embeddings', 'output']
+
+# Memory management
+enable_activation_checkpointing: True  # True reduces memory
+enable_activation_offloading: False  # True reduces memory
+clip_grad_norm: 1.0
+compile: False  # torch.compile the model + loss, True increases speed + decreases memory
+optimizer_in_bwd: False  # True saves memory. Requires gradient_accumulation_steps=1
+
+# ----------------------------------------------------------------------------------
+# Checkpointing and Resuming
+# ----------------------------------------------------------------------------------
+checkpointer:
+  _component_: utils.checkpointer.FullModelHFCheckpointer
+  checkpoint_dir: checkpoints/Mistral-7B-Instruct-v0.3
+  checkpoint_files:
+    - model-00001-of-00003.safetensors
+    - model-00002-of-00003.safetensors
+    - model-00003-of-00003.safetensors
+  recipe_checkpoint: null
+  # output_dir: checkpoints/llama_3B_PHi_mtp/
+  output_dir: checkpoints/mistral_7B_MTP_$WANDB_RUN_ID/
+  model_type: LLAMA3_MTP
+
+resume_from_checkpoint: false
+checkpoint_every_n_steps: 1000
+overwrite_checkpoints: true # If true, only the latest checkpoint is kept
+save_optimizer_state: false # Whether to save optimizer state in checkpoints
+
+# ----------------------------------------------------------------------------------
+# Evaluation and Logging
+# ----------------------------------------------------------------------------------
+evaluate_every_n_steps: 500
+
+# Logging configuration
+output_dir: /tmp/self-prediction # Fallback output directory
+log_every_n_steps: 1
+log_peak_memory_stats: false
+log_level: INFO  # DEBUG, WARN, etc.
+
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  #_component_: torchtune.training.metric_logging.DiskLogger  # use this if wandb is not installed
+  #_component_: torchtune.training.metric_logging.StdoutLogger
+  project: self_prediction
+  log_dir: ${output_dir}
+
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: False
+
+  #Output directory of trace artifacts
+  output_dir: ${output_dir}/profiling_outputs
+
+  #`torch.profiler.ProfilerActivity` types to trace
+  cpu: True
+  cuda: True
+
+  #trace options passed to `torch.profiler.profile`
+  profile_memory: True
+  with_stack: False
+  record_shapes: True
+  with_flops: False
+
+  # `torch.profiler.schedule` options:
+  # wait_steps -> wait, warmup_steps -> warmup, active_steps -> active, num_cycles -> repeat
+  wait_steps: 5
+  warmup_steps: 3
+  active_steps: 10
+  num_cycles: 1
