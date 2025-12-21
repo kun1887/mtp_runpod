@@ -3,6 +3,7 @@ import json
 import torch.multiprocessing as mp
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from config import HF_CACHE_DIR
 
 # Import your custom modules
 # Ensure these are importable from the environment running this script
@@ -27,9 +28,6 @@ EQUAL_ENTROPY = False
 model_id = "XiaomiMiMo/MiMo-7B-SFT"
 prompts_file = 'creativity_task_notebooks/creative_writing_prompts_v3.json'
 output_path = f"creativity_task_notebooks/results/create_writing_outputs_{model_id.split('/')[-1]}_temp_{TEMPERATURES}_alphas_{ALPHAS}_ee_{EQUAL_ENTROPY}.json"
-cache_dir = "/home/vincent/storage/huggingface/cache"
-if not Path(cache_dir).exists():
-    cache_dir = None
 
 
 def worker_process(gpu_id, task_queue, result_queue):
@@ -41,11 +39,11 @@ def worker_process(gpu_id, task_queue, result_queue):
 
     # Load Model and Tokenizer
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=HF_CACHE_DIR)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             trust_remote_code=True,
-            cache_dir=cache_dir,
+            cache_dir=HF_CACHE_DIR,
             torch_dtype=torch.bfloat16
         ).to(device)
     except Exception as e:

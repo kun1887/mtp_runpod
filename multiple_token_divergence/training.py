@@ -9,8 +9,8 @@ import os
 import torch
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
-from evaluation.pfa_evaluation import pfa_training_evaluation
-from evaluation.creativity_evaluation import creativity_evaluation
+from small_models_evaluation.pfa_evaluation import pfa_training_evaluation
+from small_models_evaluation.creativity_evaluation import creativity_evaluation
 from modules.self_prediction import initialize_mtp_layer_with_last_layer_weights
 
 from torch import nn
@@ -178,7 +178,7 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
             self.patience_counter = 0
             torchtune_utils.log_rank_zero(
                 self._logger,
-                f"Early stopping enabled with patience of {self.patience} evaluation steps."
+                f"Early stopping enabled with patience of {self.patience} small_models_evaluation steps."
             )
 
         # Optimizer in backward is not compatible with gradient accumulation or gradient clipping
@@ -1398,7 +1398,7 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
                         elif 'discovery' in self.cfg.dataset._component_ or 'construction' in self.cfg.dataset._component_:
                             plotly_figure_dict, eval_values_dict = creativity_evaluation(self)
                         else:
-                            raise ValueError("Unknown evaluation dataset component for self-prediction training recipe.")
+                            raise ValueError("Unknown small_models_evaluation dataset component for self-prediction training recipe.")
 
                         log_dict = plotly_figure_dict
                         for key, value in eval_values_dict.items():

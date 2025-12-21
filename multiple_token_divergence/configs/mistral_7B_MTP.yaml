@@ -128,7 +128,7 @@ metric_logger:
   _component_: torchtune.training.metric_logging.WandBLogger
   #_component_: torchtune.training.metric_logging.DiskLogger  # use this if wandb is not installed
   #_component_: torchtune.training.metric_logging.StdoutLogger
-  project: self_prediction
+  project: multiple_token_divergence
   log_dir: ${output_dir}
 
 profiler:

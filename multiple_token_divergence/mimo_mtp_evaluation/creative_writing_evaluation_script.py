@@ -25,7 +25,7 @@ USER_PROMPT_TEMPLATE = "[PROMPT START]" + prompt_content.split("[PROMPT START]")
 
 
 def get_claude_evaluation(client, writing_prompt, story_text):
-    """Sends the story to Claude for evaluation."""
+    """Sends the story to Claude for small_models_evaluation."""
     user_content = USER_PROMPT_TEMPLATE.format(
         writing_prompt=writing_prompt,
         test_model_response=story_text
@@ -54,7 +54,7 @@ def process_story_task(client, prompt_id, story_index, writing_prompt, story_dat
     Returns the result along with indices to update the main data structure.
     """
     # Check if already evaluated to allow resuming interrupted runs
-    if 'evaluation' in story_data and story_data['evaluation']:
+    if 'small_models_evaluation' in story_data and story_data['small_models_evaluation']:
         return None  # Skip
 
     story_text = story_data['story'][:MAX_STORY_CHARACTERS]
@@ -64,7 +64,7 @@ def process_story_task(client, prompt_id, story_index, writing_prompt, story_dat
     return {
         "prompt_id": prompt_id,
         "story_index": story_index,
-        "evaluation": evaluation,
+        "small_models_evaluation": evaluation,
         "params": story_data['parameters']
     }
 
@@ -125,9 +125,9 @@ def main(generated_stories_file, prompts_file, output_file):
                 # Update the main data structure in memory
                 p_id = result['prompt_id']
                 s_idx = result['story_index']
-                eval_text = result['evaluation']
+                eval_text = result['small_models_evaluation']
 
-                generated_stories_data[p_id][s_idx]['evaluation'] = eval_text
+                generated_stories_data[p_id][s_idx]['small_models_evaluation'] = eval_text
 
                 # Optional: Print snippet of result
                 # param_info = result['params']
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
     generated_stories_file = "results/create_writing_outputs_MiMo-7B-SFT_temp_[0.6, 0.7, 0.8]_alphas_[0.1]_ee_False.json"
     prompts_file = 'creative_writing_prompts_v3.json'
-    output_file = generated_stories_file.replace('outputs', 'evaluation')
+    output_file = generated_stories_file.replace('outputs', 'small_models_evaluation')
 
     # Only run if input files exist to prevent immediate crash
     if os.path.exists(generated_stories_file) and os.path.exists(prompts_file):

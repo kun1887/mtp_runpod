@@ -9,7 +9,7 @@ from torchtune.data._utils import truncate
 from torchtune.modules.tokenizers import BaseTokenizer, ModelTokenizer
 from torchtune.modules.transforms import Transform
 
-from models.tokenizer import ascii_tokenizer, vertex_tokenizer
+from models.tokenizer import vertex_tokenizer
 
 
 class SiblingDiscoveryDataset(torch.utils.data.Dataset):

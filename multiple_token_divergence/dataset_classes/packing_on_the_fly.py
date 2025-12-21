@@ -279,29 +279,3 @@ class PackedOnTheFlyDataset(torch.utils.data.IterableDataset):
 
     def __len__(self):
         return self._len
-
-
-if __name__ == "__main__":
-    tokenizer = Llama3Tokenizer(
-        path="/home/vincent/storage/models/llama3/Meta-Llama-3-8B-Instruct/original/llama3_tokenizer.model",
-        max_seq_len=1024,
-    )
-    ds = alpaca_dataset(tokenizer=tokenizer)
-    # ds = Subset(ds, range(1000))
-    packed_dataset = PackedOnTheFlyDataset(ds, max_seq_len=1024, permute_indices=True)
-
-    dataloader = DataLoader(
-        dataset=packed_dataset,
-        batch_size=8,
-        collate_fn=partial(
-            padded_collate_packed,
-        ),
-        num_workers=4,
-        worker_init_fn=packed_dataset._worker_init_fn,
-    )
-
-    for i, batch in enumerate(dataloader):
-        print(i)
-        print(batch["tokens"].shape)
-        print(batch["_debug_example_idx"])
-

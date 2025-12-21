@@ -1,0 +1,125 @@
+# ----------------------------------------------------------------------------------
+# General Run and Environment Settings
+# ----------------------------------------------------------------------------------
+device: cuda
+dtype: bf16 # Use bfloat16 for training
+seed: null # Set to an integer for reproducible runs
+compile: False # Whether to compile the model with torch.compile
+
+# ----------------------------------------------------------------------------------
+# Model and Tokenizer Configuration
+# ----------------------------------------------------------------------------------
+model:
+  _component_: models.llama3_ascii_mtp_0_1b
+  use_mtp: True
+  detach_inputs: False
+  use_next_embeddings: True
+train_from_scratch: True # If true, initializes a new model instead of loading a checkpoint
+
+# Tokenizer configuration
+tokenizer:
+  _component_: models.ascii_tokenizer
+  max_seq_len: 2048
+
+# ----------------------------------------------------------------------------------
+# Dataset and Dataloader
+# ----------------------------------------------------------------------------------
+dataset:
+  _component_: dataset_classes.learning_levels_pfa_dataset
+  # On-the-fly packing concatenates samples into sequences of a fixed length
+  packed_on_the_fly: True
+  packed_sequence_length: 2048
+  split_across_pack: false
+  # PFA settings
+  fixed_seed: 123
+  token_perturbation_rate: 0.
+  word_perturbation_rate: 0.5
+  included_learning_levels: [ 0, 1, 3, 4, 5 ]
+  max_num_languages_per_sample: 1
+  seq_len_min: 10
+  seq_len_max: 50
+  num_states_min: 3
+  num_states_max: 12
+  sequences_per_language_min: 10
+  sequences_per_language_max: 20
+  shuffle_random_sequences: False
+  num_workers: 4
+shuffle: true # Whether to shuffle the dataset
+batch_size: 16
+
+# ----------------------------------------------------------------------------------
+# Training and Optimization
+# ----------------------------------------------------------------------------------
+# Training loop settings
+epochs: 1000
+max_total_steps: 10000 # Stop training after this many global steps
+max_steps_per_epoch: null # Optional: limit steps per epoch
+
+# Training mode
+train_whole_model: true # If false, freezes the base model and only trains the PHi layer
+ignore_main_training_loss: false # If true, trains only on PHi loss, ignoring next-token loss
+
+# Optimizer (AdamW)
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: true
+  lr: 3e-4
+
+# Learning rate scheduler
+lr_scheduler:
+  _component_: modules.get_constant_schedule_with_warmup
+  num_warmup_steps: 500
+
+# Main loss function for next-token prediction
+loss:
+  _component_: modules.LinearCEMTPLoss
+  mtp_ce_loss_factor: 0.
+  mtp_kl_loss_factor: 1.
+
+# Gradient management
+gradient_accumulation_steps: 1
+clip_grad_norm: 1.0
+
+# ----------------------------------------------------------------------------------
+# Memory Management
+# ----------------------------------------------------------------------------------
+# FSDP settings
+fsdp_cpu_offload: false
+custom_sharded_layers: ['tok_embeddings', 'output']
+
+# Activation checkpointing to save memory
+enable_activation_checkpointing: false
+
+# ----------------------------------------------------------------------------------
+# Checkpointing and Resuming
+# ----------------------------------------------------------------------------------
+checkpointer:
+  _component_: utils.checkpointer.FullModelTorchTuneCheckpointer
+  checkpoint_dir: null
+  checkpoint_files: null
+  recipe_checkpoint: null
+  # output_dir: checkpoints/transformer_pfa_0_1B_shortcut_PHi_after_layer_9/
+  output_dir: checkpoints/pfa_0_1B_MTP_$WANDB_RUN_ID/
+  model_type: LLAMA3_PHI
+
+resume_from_checkpoint: false
+checkpoint_every_n_steps: 200 # TODO: 1000
+overwrite_checkpoints: true # If true, only the latest checkpoint is kept
+save_optimizer_state: false # Whether to save optimizer state in checkpoints
+
+# ----------------------------------------------------------------------------------
+# Evaluation and Logging
+# ----------------------------------------------------------------------------------
+evaluate_every_n_steps: 100 # TODO: 500
+
+# Logging configuration
+output_dir: /tmp/self-prediction # Fallback output directory
+log_every_n_steps: 1
+log_peak_memory_stats: false
+log_level: INFO
+
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  # _component_: torchtune.training.metric_logging.StdoutLogger
+  project: multiple_token_divergence
+  log_dir: ${output_dir}

@@ -7,10 +7,11 @@ from tqdm.auto import tqdm
 import argparse
 import pickle
 
-from evaluation.custom_generation_utils import geodesic_interpolation, find_dist_with_entropy
+from small_models_evaluation.custom_generation_utils import geodesic_interpolation, find_dist_with_entropy
 
 from mimo_mtp_evaluation.mimo_utils import (generate_with_mtp, logit_filtering_mask,
                                             solve_slop_optimization)
+from config import HF_CACHE_DIR
 
 MATH_GENERAL_PROMPT = """Answer the following math question, given in LaTeX format, clearly and concisely, and present the final answer as \(\\boxed{x}\), where x is the fully simplified solution.
 
@@ -302,15 +303,12 @@ def main():
     args = parser.parse_args()
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    cache_dir = "/home/vincent/storage/huggingface/cache"
-    if not Path(cache_dir).exists():
-        cache_dir = None
     dataset_path = Path("../../data/MATH500/test")
 
     # Load model and tokenizer
     kwargs = dict(
         trust_remote_code=True,
-        cache_dir=cache_dir,
+        cache_dir=HF_CACHE_DIR,
         torch_dtype=torch.bfloat16
     )
 

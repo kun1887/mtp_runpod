@@ -1,10 +1,10 @@
-from .stochastic_languages import (
+from .pfa_languages import (
     learning_levels_pfa_dataset,
     mixed_pfa_random_dataset,
     pfa_dataset,
     messages_pfa_dataset
 )
-from .natural_language_levels import (
+from .natural_language_reasoning import (
     gsm_8k_dataset,
     math_dataset,
     fineweb_dataset,
