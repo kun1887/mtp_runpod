@@ -12,8 +12,14 @@ from torchtune.modules.attention_utils import _MaskType, _sdpa_or_flex_attention
 from torchtune.modules.feed_forward import FeedForward
 from torchtune.modules.kv_cache import KVCache
 from torchtune.modules.transformer import _get_clones
-from torchtune.modules.loss.loss_types import SFTLoss
-from torchtune.modules.loss import LinearCrossEntropyLoss
+try:
+    from torchtune.modules.loss.loss_types import SFTLoss
+    from torchtune.modules.loss import LinearCrossEntropyLoss
+except ImportError:
+    from torchtune.modules.loss import CEWithChunkedOutputLoss as LinearCrossEntropyLoss
+    class SFTLoss:
+        """Stub for torchtune versions that don't have SFTLoss (< 0.7)."""
+        pass
 from torch.distributed.tensor import DTensor, Shard
 from torch.distributed.tensor.parallel import ColwiseParallel
 from torchtune.utils import get_logger

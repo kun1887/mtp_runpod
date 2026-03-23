@@ -19,14 +19,26 @@ from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
 )
 from torchtune import config, training, utils
-from torchtune.modules.optim import OptimizerInBackward
+try:
+    from torchtune.modules.optim import OptimizerInBackward
+except ImportError:
+    class OptimizerInBackward:
+        """Stub for torchtune versions that don't have OptimizerInBackward (< 0.7)."""
+        pass
 from torchtune.modules.peft import (
     get_adapter_state_dict,
     get_merged_lora_ckpt,
     validate_missing_and_unexpected_for_lora,
 )
 from torchtune.training.checkpointing._checkpointer import DistributedCheckpointer
-from torchtune.training.checkpointing._utils import get_most_recent_checkpoint
+try:
+    from torchtune.training.checkpointing._utils import get_most_recent_checkpoint
+except ImportError:
+    from torchtune.training.checkpointing._utils import get_largest_iter_folder
+    from pathlib import Path
+    def get_most_recent_checkpoint(output_dir) -> "Optional[str]":
+        result = get_largest_iter_folder(Path(output_dir))
+        return str(result) if result else None
 from torchtune.training.memory import OptimizerInBackwardWrapper
 
 log = utils.get_logger("DEBUG")

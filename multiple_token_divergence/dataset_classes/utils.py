@@ -8,7 +8,11 @@ import functools
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX, PACK_TYPE
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
 from torchtune.utils._logging import get_logger, log_once
-from torchtune.modules.attention_utils import create_block_causal_mask, create_block_causal_mask_flex, _get_document_ids_from_seq_lens
+from torchtune.modules.attention_utils import create_block_causal_mask, _get_document_ids_from_seq_lens
+try:
+    from torchtune.modules.attention_utils import create_block_causal_mask_flex
+except ImportError:
+    from torch.nn.attention.flex_attention import create_block_mask as create_block_causal_mask_flex
 
 _log: logging.Logger = get_logger()
 

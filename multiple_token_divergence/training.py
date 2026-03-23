@@ -32,30 +32,139 @@ from torchtune.data import padded_collate_sft, padded_collate_packed
 from dataset_classes.utils import dummy_collate
 from dataset_classes.packing_on_the_fly import PackedOnTheFlyDataset
 from torchtune.datasets import ConcatDataset
-from torchtune.modules.loss import SFTLoss, LinearCrossEntropyLoss
+try:
+    from torchtune.modules.loss import SFTLoss, LinearCrossEntropyLoss
+except ImportError:
+    from torchtune.modules.loss import CEWithChunkedOutputLoss as LinearCrossEntropyLoss
+    class SFTLoss:
+        """Stub for torchtune versions that don't have SFTLoss (< 0.7)."""
+        pass
 from torchtune.datasets._text_completion import TextCompletionDataset
 from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.training import DummyProfiler, PROFILER_KEY
 from torchtune.training.activations import apply_selective_activation_checkpointing
-from torchtune.modules.moe import utils as moe_utils
-from torchtune.modules.embedding_utils import resize_token_embeddings
+try:
+    from torchtune.modules.moe import utils as moe_utils
+except ImportError:
+    import types
+    moe_utils = types.SimpleNamespace(use_grouped_mm=True)
+try:
+    from torchtune.modules.embedding_utils import resize_token_embeddings
+except ImportError:
+    def resize_token_embeddings(model: "nn.Module", new_vocab_size: int) -> None:
+        """Resize token embedding and output projection layers to new_vocab_size."""
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Embedding) and module.num_embeddings != new_vocab_size:
+                old_weight = module.weight.data
+                new_embed = nn.Embedding(new_vocab_size, module.embedding_dim, device=old_weight.device, dtype=old_weight.dtype)
+                new_embed.weight.data[:min(old_weight.size(0), new_vocab_size)] = old_weight[:min(old_weight.size(0), new_vocab_size)]
+                parent = model
+                parts = name.split(".")
+                for part in parts[:-1]:
+                    parent = getattr(parent, part)
+                setattr(parent, parts[-1], new_embed)
 from torch.distributed.tensor.parallel import parallelize_module
 from torchtune.training.lr_schedulers import get_lr
-from torchtune.training.quantization import (
-    convert_to_float8_training,
-    is_fp8_tensorwise_scaling,
-)
-from torchtune.training import (
-    DummyProfiler,
-    PROFILER_KEY,
-    VALID_BACKENDS_FOR_MEMORY_STATS,
-)
+try:
+    from torchtune.training.quantization import (
+        convert_to_float8_training,
+        is_fp8_tensorwise_scaling,
+    )
+except ImportError:
+    def convert_to_float8_training(model, recipe_name=None):
+        """Stub: FP8 training not available in this torchtune version."""
+        return model
+    def is_fp8_tensorwise_scaling(recipe_name=None) -> bool:
+        return False
+
+try:
+    from torchtune.training import (
+        DummyProfiler,
+        PROFILER_KEY,
+        VALID_BACKENDS_FOR_MEMORY_STATS,
+    )
+except ImportError:
+    from torchtune.training import DummyProfiler, PROFILER_KEY
+    VALID_BACKENDS_FOR_MEMORY_STATS = {"cuda"}
 
 from huggingface_hub import snapshot_download
 from torch.distributed._tensor import DTensor, Shard
 
 from tqdm import tqdm
+
+# ── Compatibility shims for torchtune < 0.7 ──────────────────────────────────
+import contextlib as _contextlib
+
+if not hasattr(training, "ParallelDims"):
+    class _ParallelDims:
+        """Stub for torchtune.training.ParallelDims (added in 0.7).
+        Supports simple dp_shard (FSDP) only; TP/CP/dp_replicate raise NotImplementedError.
+        """
+        def __init__(self, dp_replicate, dp_shard, tp, cp, world_size):
+            self.tp = tp
+            self.cp = cp
+            self.dp_replicate = dp_replicate
+            self.world_size = world_size
+            non_dp = tp * cp * max(dp_replicate, 1)
+            self.dp_shard = (world_size // non_dp) if dp_shard == -1 else dp_shard
+
+        @property
+        def tp_enabled(self): return self.tp > 1
+        @property
+        def cp_enabled(self): return self.cp > 1
+        @property
+        def dp_shard_enabled(self): return self.dp_shard > 1
+        @property
+        def dp_replicate_enabled(self): return self.dp_replicate > 1
+        @property
+        def dp_enabled(self): return self.dp_shard_enabled or self.dp_replicate_enabled
+        @property
+        def non_data_parallel_size(self): return max(self.tp * self.cp, 1)
+
+        def build_mesh(self, device_type):
+            if self.tp_enabled or self.cp_enabled or self.dp_replicate_enabled:
+                raise NotImplementedError(
+                    "ParallelDims stub only supports dp_shard (FSDP). "
+                    "TP / CP / dp_replicate require torchtune >= 0.7."
+                )
+            from torch.distributed.device_mesh import init_device_mesh
+            mesh = init_device_mesh(device_type, (self.dp_shard,), mesh_dim_names=("dp_shard_cp",))
+
+            class _MeshAlias:
+                _ALIAS = {"dp": "dp_shard_cp"}
+                def __init__(self, m): self._m = m
+                def __getitem__(self, key):
+                    if isinstance(key, str):
+                        key = self._ALIAS.get(key, key)
+                    elif isinstance(key, (tuple, list)):
+                        key = type(key)(self._ALIAS.get(k, k) for k in key)
+                    return self._m[key]
+                def __getattr__(self, name): return getattr(self._m, name)
+
+            return _MeshAlias(mesh)
+
+    training.ParallelDims = _ParallelDims
+
+if not hasattr(training, "get_context_parallel_manager"):
+    def _get_context_parallel_manager(enabled, rotate_method, world_mesh, model):
+        """Stub: no-op context manager (CP not supported in torchtune 0.6.1)."""
+        @_contextlib.contextmanager
+        def _no_op(batch_values):
+            yield batch_values
+        return _no_op
+    training.get_context_parallel_manager = _get_context_parallel_manager
+
+if not hasattr(training, "get_train_context"):
+    def _get_train_context(enable_loss_parallel):
+        """Stub: no-op training context (loss parallel not supported in torchtune 0.6.1)."""
+        @_contextlib.contextmanager
+        def _ctx(cp_cm):
+            with cp_cm:
+                yield
+        return _ctx
+    training.get_train_context = _get_train_context
+# ─────────────────────────────────────────────────────────────────────────────
 
 log = torchtune_utils.get_logger("DEBUG")
 
@@ -365,7 +474,7 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
             torch._dynamo.config.capture_scalar_outputs = True
 
         # This indirection is needed to apply torch.compile to scale_grads step.
-        self._grad_scaler = training.scale_grads_
+        self._grad_scaler = training.scale_grads
         if self._compile_scale_grads:
             self._grad_scaler = torch.compile(
                 self._grad_scaler, backend=self._compile_backend

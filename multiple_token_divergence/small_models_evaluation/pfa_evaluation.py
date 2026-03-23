@@ -20,7 +20,12 @@ from dataset_classes import learning_levels_pfa_dataset
 # from plotly.subplots import make_subplots
 import torchtune.utils
 from torchtune.modules import delete_kv_caches
-from torchtune.modules.loss import SFTLoss
+try:
+    from torchtune.modules.loss import SFTLoss
+except ImportError:
+    class SFTLoss:
+        """Stub for torchtune versions that don't have SFTLoss (< 0.7)."""
+        pass
 
 from torchtune.data import padded_collate_packed
 from dataset_classes import PackedOnTheFlyDataset
