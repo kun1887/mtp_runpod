@@ -40,4 +40,5 @@ ipython
 # ── Note: sglang excluded ────────────────────────────────────────────────────
 # sglang 0.5.9 pulls in flashinfer, torchao, cuda-python and other heavy
 # CUDA-specific packages that conflict with the pinned torch 2.6.0 above.
-# Install it separately in a dedicated inference environment if needed.
+# Install it separately in a dedicated inference environment if needed with this command:
+# pip install torchao --index-url https://download.pytorch.org/whl/cu124
