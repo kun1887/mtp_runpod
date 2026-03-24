@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torchtune import config, modules, training
 from torchtune import utils as torchtune_utils
 from torchtune.data import padded_collate_sft, padded_collate_packed
+from torchtune.modules.attention_utils import create_block_causal_mask
 from dataset_classes.utils import dummy_collate
 from dataset_classes.packing_on_the_fly import PackedOnTheFlyDataset
 from torchtune.datasets import ConcatDataset
@@ -595,6 +596,16 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
 
         if isinstance(self._loss_fn, SFTLoss):
             self._loss_fn.set_model_output(self._model)
+        elif callable(getattr(self._loss_fn, "set_model_output", None)):
+            self._loss_fn.set_model_output(self._model)
+        elif callable(getattr(self._loss_fn, "update_model", None)):
+            self._loss_fn.update_model(self._model)
+        elif hasattr(self._loss_fn, "linear_projection"):
+            model_output = getattr(self._model, "output", None)
+            if model_output is None and hasattr(self._model, "module"):
+                model_output = getattr(self._model.module, "output", None)
+            if model_output is not None:
+                self._loss_fn.linear_projection = model_output
 
         if self._compile_loss:
             training.compile_loss(self._loss_fn, verbose=self._is_rank_zero)
@@ -1270,10 +1281,15 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
 
         # post process for third party loss functions
         if not isinstance(self._loss_fn, SFTLoss):
-            labels = labels.reshape(-1)
-            outputs = outputs.reshape(-1, outputs.size(-1))
-            if isinstance(outputs, DTensor):
-                outputs = outputs.full_tensor()
+            if isinstance(outputs, dict):
+                # Custom self-prediction losses consume structured outputs and
+                # expect unflattened labels (batch, seq_len).
+                pass
+            else:
+                labels = labels.reshape(-1)
+                outputs = outputs.reshape(-1, outputs.size(-1))
+                if isinstance(outputs, DTensor):
+                    outputs = outputs.full_tensor()
 
         # Shift labels to compute loss
         # equivalent to doing labels[..., 1:] and logits[..., :-1, :]
@@ -1375,7 +1391,16 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
                 except StopIteration:
                     break
 
+                seq_lens = None
+                if isinstance(batch, list) and len(batch) > 0 and "seq_lens" in batch[0]:
+                    seq_lens = [x["seq_lens"] for x in batch]
+
                 batch = padded_collate_packed(batch)
+                if "mask" in batch and not isinstance(batch["mask"], torch.Tensor):
+                    if seq_lens is not None:
+                        batch["mask"] = create_block_causal_mask(seq_lens=seq_lens).to(torch.bool)
+                    elif hasattr(batch["mask"], "to_dense"):
+                        batch["mask"] = batch["mask"].to_dense().to(torch.bool)
 
                 # Start tracking CUDA memory for active steps for just the first epoch
                 if (
@@ -1427,11 +1452,31 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
                         torch.distributed.all_reduce(running_loss)
 
                         # Manually scale the gradients from unnormalized loss by total # of tokens
-                        self._grad_scaler(
-                            list(self._model.parameters()),
-                            self._world_size / num_tokens,
-                            False if self.parallel_dims.tp_enabled else None,
-                        )
+                        grad_scale = self._world_size / num_tokens
+                        try:
+                            if self.parallel_dims.tp_enabled:
+                                self._grad_scaler(
+                                    self._model,
+                                    grad_scale,
+                                    False,
+                                )
+                            else:
+                                self._grad_scaler(
+                                    self._model,
+                                    grad_scale,
+                                )
+                        except TypeError:
+                            if self.parallel_dims.tp_enabled:
+                                self._grad_scaler(
+                                    list(self._model.parameters()),
+                                    grad_scale,
+                                    False,
+                                )
+                            else:
+                                self._grad_scaler(
+                                    list(self._model.parameters()),
+                                    grad_scale,
+                                )
 
                         if self._clip_grad_norm is not None:
                             grad_norm = torch.nn.utils.clip_grad_norm_(

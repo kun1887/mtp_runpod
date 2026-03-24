@@ -127,6 +127,7 @@ class TransformerDecoder(nn.Module):
         output: Union[nn.Linear, Callable],
         num_layers: Optional[int] = None,
         output_hidden_states: Optional[list[int]] = None,
+        num_output_chunks: int = 0,
         tied_embeddings: bool = True,
     ) -> None:
         super().__init__()
@@ -151,6 +152,7 @@ class TransformerDecoder(nn.Module):
         self.head_dim = head_dim
         self.causal_mask = None
         self.tied_embeddings = tied_embeddings
+        self.num_output_chunks = num_output_chunks
         self.skip_output_layer = False
 
         self._embedding_are_tied = False

@@ -385,6 +385,18 @@ class LinearCEPHiLoss(LinearCrossEntropyLoss, nn.Module):
         self.self_critic_num_neg_examples = self_critic_num_neg_examples
         self.divide_elementwise_training_losses_by_d_model = divide_elementwise_training_losses_by_d_model
 
+    def update_model(self, model: nn.Module) -> None:
+        target_model = model.module if hasattr(model, "module") else model
+        model_output = getattr(target_model, "output", None)
+        if model_output is None:
+            raise AttributeError("Could not find model output projection for loss")
+        if hasattr(target_model, "skip_output_layer"):
+            target_model.skip_output_layer = True
+        self.linear_projection = model_output
+
+    def set_model_output(self, model: nn.Module) -> None:
+        self.update_model(model)
+
     def apply_compile_strategy(self, *args, **kwargs):
         """Applies compile only to the compute_cross_entropy function.
         If compiling CE + chunking operation together, memory requirement is higher."""
@@ -848,6 +860,18 @@ class LinearCEMTPLoss(LinearCrossEntropyLoss, nn.Module):
         self.tp_enabled = tp_enabled
         self.mtp_ce_loss_factor = mtp_ce_loss_factor
         self.mtp_kl_loss_factor = mtp_kl_loss_factor
+
+    def update_model(self, model: nn.Module) -> None:
+        target_model = model.module if hasattr(model, "module") else model
+        model_output = getattr(target_model, "output", None)
+        if model_output is None:
+            raise AttributeError("Could not find model output projection for loss")
+        if hasattr(target_model, "skip_output_layer"):
+            target_model.skip_output_layer = True
+        self.linear_projection = model_output
+
+    def set_model_output(self, model: nn.Module) -> None:
+        self.update_model(model)
 
     def apply_compile_strategy(self, *args, **kwargs):
         """Applies compile only to the compute_cross_entropy function.
