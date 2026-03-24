@@ -136,12 +136,16 @@ def generate_per_token_losses(recipe, batch):
     #else:
     #    shortcut_outputs = None
 
-    # post process for third party loss functions
+    # Post-process only for loss functions that expect flat logits/labels.
+    # Custom self-prediction losses can consume structured dict outputs.
     if not isinstance(recipe._loss_fn, SFTLoss):
-        labels = labels.reshape(-1)
-        outputs = outputs.reshape(-1, outputs.size(-1))
-        if isinstance(outputs, DTensor):
-            outputs = outputs.full_tensor()
+        if isinstance(outputs, dict):
+            pass
+        else:
+            labels = labels.reshape(-1)
+            outputs = outputs.reshape(-1, outputs.size(-1))
+            if isinstance(outputs, DTensor):
+                outputs = outputs.full_tensor()
 
     loss = recipe._loss_fn(outputs, labels)
     if isinstance(loss, tuple):
