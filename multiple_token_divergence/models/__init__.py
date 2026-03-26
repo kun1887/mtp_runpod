@@ -1,6 +1,7 @@
 from models.model_builders import (
     llama3_ascii_mtp_0_1b,
     llama3_ascii_shortcut_phi_0_1b,
+    llama3_vertex_shortcut_phi_0_1b,
     llama3_creativity_mtp_0_1b,
     mistral_mtp_7b
 )
@@ -12,6 +13,7 @@ __all__ = [
     "vertex_tokenizer",
     "llama3_ascii_mtp_0_1b",
     "llama3_ascii_shortcut_phi_0_1b",
+    "llama3_vertex_shortcut_phi_0_1b",
     "llama3_creativity_mtp_0_1b",
     "mistral_mtp_7b"
 ]

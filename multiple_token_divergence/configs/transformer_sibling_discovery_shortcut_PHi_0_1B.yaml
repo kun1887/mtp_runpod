@@ -1,0 +1,118 @@
+# ----------------------------------------------------------------------------------
+# General Run and Environment Settings
+# ----------------------------------------------------------------------------------
+device: cuda
+dtype: bf16 # Use bfloat16 for training
+seed: null # Set to an integer for reproducible runs
+compile: False # Whether to compile the model with torch.compile
+
+# ----------------------------------------------------------------------------------
+# Model and Tokenizer Configuration
+# ----------------------------------------------------------------------------------
+model:
+  _component_: models.llama3_vertex_shortcut_phi_0_1b
+  use_shortcut_phi: True
+  detach_inputs: False
+  use_next_embeddings: True
+  shortcut_PHi_layer_position: 10
+  learnable_critic: True
+train_from_scratch: True # If true, initializes a new model instead of loading a checkpoint
+
+# Tokenizer configuration
+tokenizer:
+  _component_: models.vertex_tokenizer
+  max_seq_len: 128
+
+# ----------------------------------------------------------------------------------
+# Dataset and Dataloader
+# ----------------------------------------------------------------------------------
+dataset:
+  _component_: dataset_classes.sibling_discovery_dataset
+  seed: 42
+  single_example: True
+  # On-the-fly packing concatenates samples into sequences of a fixed length
+  packed_on_the_fly: True
+  packed_sequence_length: 128
+  split_across_pack: false
+  num_workers: 4
+shuffle: true # Whether to shuffle the dataset
+batch_size: 64
+
+# ----------------------------------------------------------------------------------
+# Training and Optimization
+# ----------------------------------------------------------------------------------
+# Training loop settings
+epochs: 1000
+max_total_steps: 50000 # Stop training after this many global steps
+max_steps_per_epoch: null # Optional: limit steps per epoch
+early_stopping: false
+patience: 100
+
+# Training mode
+train_whole_model: true # If false, freezes the base model and only trains the PHi layer
+
+# Optimizer (AdamW)
+optimizer:
+  _component_: torch.optim.AdamW
+  fused: true
+  lr: 5e-5
+
+# Learning rate scheduler
+lr_scheduler:
+  _component_: modules.get_constant_schedule_with_warmup
+  num_warmup_steps: 2000
+
+# Main loss function for next-token prediction
+loss:
+  _component_: modules.LinearCEPHiLoss
+  phi_loss_factor: 1.
+  detached_phi_loss_factor: 0.
+  self_critic_loss_factor: 1.
+  mse_reconstruction_loss_factor: 0.
+  self_critic_across_sequence_dim: True
+  self_critic_num_neg_examples: 7
+
+# Gradient management
+gradient_accumulation_steps: 1
+clip_grad_norm: 1.0
+
+# ----------------------------------------------------------------------------------
+# Memory Management
+# ----------------------------------------------------------------------------------
+# FSDP settings
+fsdp_cpu_offload: false
+
+# Activation checkpointing to save memory
+enable_activation_checkpointing: false
+
+# ----------------------------------------------------------------------------------
+# Checkpointing and Resuming
+# ----------------------------------------------------------------------------------
+checkpointer:
+  _component_: utils.checkpointer.FullModelTorchTuneCheckpointer
+  checkpoint_dir: null
+  checkpoint_files: null
+  recipe_checkpoint: null
+  output_dir: checkpoints/sibling_discovery_shortcut_PHi_0_1B_$WANDB_RUN_ID/
+  model_type: LLAMA3_PHI
+
+resume_from_checkpoint: false
+checkpoint_every_n_steps: 1000
+overwrite_checkpoints: true # If true, only the latest checkpoint is kept
+save_optimizer_state: false # Whether to save optimizer state in checkpoints
+
+# ----------------------------------------------------------------------------------
+# Evaluation and Logging
+# ----------------------------------------------------------------------------------
+evaluate_every_n_steps: 500
+
+# Logging configuration
+output_dir: /tmp/self-prediction # Fallback output directory
+log_every_n_steps: 1
+log_peak_memory_stats: false
+log_level: INFO
+
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  project: sibling_discovery_shortcut_PHi
+  log_dir: ${output_dir}
