@@ -55,11 +55,11 @@ def decode_token_by_token(tokens, tokenizer):
 
     # Special handling for ASCIITokenizer for simple char-by-char decoding.
     tokens = tokens.cpu()
-    if type(tokenizer) is ASCIITokenizer:
+    if isinstance(tokenizer, ASCIITokenizer):
         string = tokenizer.decode(tokens.squeeze().tolist())
         tokens_by_tokens = [c for c in string]
         return tokens_by_tokens
-    elif type(tokenizer) is MIDILike:
+    elif hasattr(tokenizer, "vocab") and isinstance(tokenizer.vocab, dict):
         token_to_str = {v: k for k, v in tokenizer.vocab.items()}
         token_list = tokens.squeeze().tolist()
         if type(token_list[0]) == list:
