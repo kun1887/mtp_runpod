@@ -107,7 +107,7 @@ class FullModelTorchTuneCheckpointer(_CheckpointerInterface):
                 )
 
             self._checkpoint_dir = Path(checkpoint_dir)
-            self._checkpoint_path = Path(get_path(str(self._checkpoint_dir), checkpoint_files[0]))
+            self._checkpoint_path = get_path(self._checkpoint_dir, checkpoint_files[0])
 
             if not self._checkpoint_path.suffix == ".pt":
                 raise ValueError(
@@ -616,7 +616,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         """
         checkpoint_paths: List[Path] = []
         for f in checkpoint_files:
-            checkpoint_path = get_path(str(self._checkpoint_dir), f)
+            checkpoint_path = get_path(self._checkpoint_dir, f)
             checkpoint_paths.append(checkpoint_path)
         return sorted(checkpoint_paths)
 
