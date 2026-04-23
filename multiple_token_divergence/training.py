@@ -1399,6 +1399,7 @@ class SelfPredictionTrainingRecipeDistributed(FTRecipeInterface):
                 if "mask" in batch and not isinstance(batch["mask"], torch.Tensor):
                     if seq_lens is not None:
                         batch["mask"] = create_block_causal_mask(seq_lens=seq_lens).to(torch.bool)
+                        
                     elif hasattr(batch["mask"], "to_dense"):
                         batch["mask"] = batch["mask"].to_dense().to(torch.bool)
 

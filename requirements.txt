@@ -3,7 +3,7 @@
 # The cu124 wheel index provides CUDA 12.4 builds compatible with sm_75+ GPUs
 # (RTX 2000+, T4, A100, H100).
 --extra-index-url https://download.pytorch.org/whl/cu124
-#torch==2.6.0
+torch==2.6.0
 torchdata==0.11.0
 torchtune==0.6.1
 
